@@ -1,0 +1,85 @@
+# Argus configuration - copy this to config.yaml and edit for your estate.
+#
+# Argus is a Prometheus exporter for security-posture metrics. It runs the
+# enabled collectors below on every scrape and exposes the results at
+# /metrics. Nothing here is secret, so config.yaml is safe to keep in a
+# config-management repo (but it IS gitignored in this project by default).
+
+# ---------------------------------------------------------------------------
+# Exporter HTTP server
+# ---------------------------------------------------------------------------
+server:
+  host: "0.0.0.0"   # bind address for the /metrics server
+  port: 9882        # Prometheus scrapes http://<host>:9882/metrics
+  timeout: 5.0      # seconds, applied to each individual network check
+
+# ---------------------------------------------------------------------------
+# Turn whole collectors on/off. Disabled collectors emit no metrics.
+# ---------------------------------------------------------------------------
+enabled:
+  tls_cert: true
+  http_headers: true
+  ports: true
+  dependencies: true
+
+# ---------------------------------------------------------------------------
+# Per-collector settings
+# ---------------------------------------------------------------------------
+collectors:
+
+  # --- TLS certificate expiry -------------------------------------------
+  # For each target Argus opens a TLS connection and reads the cert.
+  # Targets can be "host:port" shorthand or a {host, port} mapping.
+  # The badssl.com hosts below are public test endpoints that always
+  # present a valid / expired / self-signed cert respectively - great for
+  # confirming the collector reports what you expect.
+  tls_cert:
+    targets:
+      - "example.com:443"
+      - "badssl.com:443"             # valid cert
+      - "expired.badssl.com:443"     # cert that is already expired
+      - "self-signed.badssl.com:443" # untrusted but readable cert
+      - host: "github.com"
+        port: 443
+
+  # --- HTTP security headers --------------------------------------------
+  # For each URL Argus does a GET and checks which security headers are set.
+  # 'headers' is the global list scored for every URL (you can override it
+  # per-target by adding a 'headers' key under a target).
+  http_headers:
+    headers:
+      - "Strict-Transport-Security"
+      - "Content-Security-Policy"
+      - "X-Frame-Options"
+      - "X-Content-Type-Options"
+      - "Referrer-Policy"
+    targets:
+      - "https://example.com"
+      - "https://github.com"
+      - url: "https://www.cloudflare.com"
+
+  # --- Unexpected open ports --------------------------------------------
+  # For each host, give the ports you EXPECT to be open (allowed_ports).
+  # Argus probes scan_ports and flags anything open that is not allowed.
+  # Omit scan_ports to use Argus's small built-in set of commonly-exposed
+  # ports. Keep ranges modest - this is drift detection, not nmap.
+  ports:
+    targets:
+      - host: "scanme.nmap.org"      # Nmap's public, scan-friendly host
+        allowed_ports: [22, 80]
+        scan_ports: [22, 80, 443, 3306, "8000-8010"]
+      - host: "example.com"
+        allowed_ports: [80, 443]
+        # uses the default scan set
+
+  # --- Dependency vulnerabilities (OSV.dev) -----------------------------
+  # Point at one or more requirements.txt files. Argus parses the pinned
+  # packages and asks OSV.dev which have known CVEs, then buckets findings
+  # by severity. Unreachable network => scan_success=0 and zero counts.
+  dependencies:
+    files:
+      # A deliberately vulnerable demo fixture so you can see the collector
+      # light up on a first run. Point this at your own requirements.txt
+      # (e.g. "requirements.txt") to scan your real dependencies.
+      - "examples/vulnerable-requirements.txt"
+    max_lookups: 100   # cap on per-scrape severity follow-up requests

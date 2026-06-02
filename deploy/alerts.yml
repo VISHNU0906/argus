@@ -1,0 +1,124 @@
+# Prometheus alerting rules for Argus.
+#
+# Each rule turns an Argus metric into an actionable alert with a runbook
+# annotation. Tune the thresholds and 'for:' windows to your environment.
+
+groups:
+  - name: argus-tls
+    rules:
+      - alert: ArgusCertExpiringSoon
+        # Cert valid but fewer than 14 days of life left.
+        expr: argus_tls_cert_expiry_days >= 0 and argus_tls_cert_expiry_days < 14
+        for: 1h
+        labels:
+          severity: warning
+          team: infrasec
+        annotations:
+          summary: "TLS cert for {{ $labels.target }} expires in {{ $value | printf \"%.0f\" }} days"
+          description: >-
+            The certificate served by {{ $labels.target }} expires in
+            {{ $value | printf "%.0f" }} days. Renew and redeploy before it
+            lapses to avoid an outage.
+          runbook: >-
+            1) Confirm the real expiry with
+            `echo | openssl s_client -connect {{ $labels.target }} 2>/dev/null | openssl x509 -noout -dates`.
+            2) Renew via your CA / cert-manager.
+            3) Deploy the new cert and verify argus_tls_cert_expiry_days recovers.
+
+      - alert: ArgusCertExpired
+        # Cert already past notAfter (or unreadable -> -1).
+        expr: argus_tls_cert_expiry_days < 0
+        for: 5m
+        labels:
+          severity: critical
+          team: infrasec
+        annotations:
+          summary: "TLS cert for {{ $labels.target }} is EXPIRED or unreadable"
+          description: >-
+            {{ $labels.target }} is serving an expired (or unreadable)
+            certificate. Clients will reject the connection. This is a
+            customer-facing outage for any HTTPS endpoint.
+          runbook: >-
+            Treat as an incident. Replace the certificate immediately. If
+            argus_tls_cert_check_success is also 0, the host may be down or
+            blocking TLS rather than serving an expired cert - check
+            connectivity first.
+
+  - name: argus-headers
+    rules:
+      - alert: ArgusSecurityHeaderMissing
+        # A scored security header is absent on a live endpoint.
+        expr: argus_security_header_present == 0 and on(url) argus_endpoint_up == 1
+        for: 30m
+        labels:
+          severity: warning
+          team: appsec
+        annotations:
+          summary: "{{ $labels.url }} is missing the {{ $labels.header }} header"
+          description: >-
+            The endpoint {{ $labels.url }} responded successfully but did not
+            set the {{ $labels.header }} security header. This weakens the
+            site's defense against common web attacks.
+          runbook: >-
+            Add {{ $labels.header }} at the web server / CDN / framework
+            layer. See https://owasp.org/www-project-secure-headers/ for
+            recommended values, then confirm
+            argus_security_header_present recovers to 1.
+
+  - name: argus-endpoints
+    rules:
+      - alert: ArgusEndpointDown
+        expr: argus_endpoint_up == 0
+        for: 5m
+        labels:
+          severity: critical
+          team: infrasec
+        annotations:
+          summary: "Endpoint {{ $labels.url }} is unreachable"
+          description: >-
+            Argus could not get any HTTP response from {{ $labels.url }} for
+            5 minutes (DNS, TLS, connection refused, or timeout).
+          runbook: >-
+            Check DNS, the load balancer, and the upstream service health.
+            Cross-reference with argus_collector_up{collector="http_headers"}
+            to rule out an exporter-side problem.
+
+  - name: argus-ports
+    rules:
+      - alert: ArgusUnexpectedOpenPort
+        expr: argus_unexpected_open_ports_total > 0
+        for: 15m
+        labels:
+          severity: warning
+          team: infrasec
+        annotations:
+          summary: "{{ $labels.host }} has {{ $value | printf \"%.0f\" }} unexpected open port(s)"
+          description: >-
+            Argus found open ports on {{ $labels.host }} that are not on its
+            allowlist. This may be a misconfiguration or an exposed service.
+          runbook: >-
+            Inspect argus_unexpected_open_port{host="{{ $labels.host }}"} to
+            see which ports. Confirm the service is intended; if so, add the
+            port to allowed_ports. If not, close it and investigate.
+
+  - name: argus-dependencies
+    rules:
+      - alert: ArgusDependencyVulnHigh
+        # Any HIGH or CRITICAL known vulnerability in a scanned dependency.
+        expr: >-
+          sum by (file) (
+            argus_dependency_vulnerabilities{severity=~"HIGH|CRITICAL"}
+          ) > 0
+        for: 1h
+        labels:
+          severity: high
+          team: appsec
+        annotations:
+          summary: "{{ $labels.file }} has HIGH/CRITICAL dependency vulnerabilities"
+          description: >-
+            OSV.dev reports {{ $value | printf "%.0f" }} high or critical
+            known vulnerabilities in the dependencies pinned in
+            {{ $labels.file }}.
+          runbook: >-
+            Run `pip-audit -r {{ $labels.file }}` (or check OSV.dev) for the
+            exact advisories, bump the affected packages, and redeploy.

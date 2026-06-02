@@ -1,0 +1,13 @@
+# DEMO FIXTURE - intentionally vulnerable, do NOT install these.
+#
+# These are deliberately old, known-vulnerable pins used only to show the
+# Argus `dependencies` collector lighting up against the live OSV.dev
+# database. The project's own runtime deps live in ../requirements.txt and
+# are kept current.
+#
+# Expect Argus to report HIGH/CRITICAL findings for these on a live scan.
+
+jinja2==2.4.1      # multiple CVEs (sandbox escape, XSS)
+flask==0.12        # CVE-2018-1000656 (DoS via JSON)
+requests==2.5.0    # CVE-2018-18074 (credential leak on redirect)
+pyyaml==3.13       # CVE-2017-18342 / CVE-2020-1747 (arbitrary code exec via load)

@@ -1,0 +1,41 @@
+# Prometheus configuration for the Argus stack.
+#
+# Scrapes the Argus exporter, loads the Argus alert rules, and forwards
+# firing alerts to Alertmanager. Hostnames (argus, alertmanager) resolve
+# via the docker-compose network.
+
+global:
+  # Argus runs every check synchronously on scrape, and the dependency +
+  # port collectors are network-bound, so a scrape can take a while on a
+  # large config. Give it a generous interval and timeout. If you only run
+  # the tls_cert + http_headers collectors you can drop these to ~30s.
+  scrape_interval: 2m         # how often to pull /metrics
+  scrape_timeout: 110s        # must exceed the slowest scrape (deps/ports)
+  evaluation_interval: 1m     # how often alert rules are evaluated
+
+# Load alerting rules from this file.
+rule_files:
+  - "alerts.yml"
+
+# Where to send alerts.
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - "alertmanager:9093"
+
+scrape_configs:
+  # Argus security-posture exporter.
+  - job_name: "argus"
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - "argus:9882"
+        labels:
+          service: "argus"
+
+  # Prometheus scraping itself (handy for sanity checks).
+  - job_name: "prometheus"
+    static_configs:
+      - targets:
+          - "localhost:9090"

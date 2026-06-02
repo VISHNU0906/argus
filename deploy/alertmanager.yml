@@ -1,0 +1,59 @@
+# Alertmanager configuration for the Argus stack.
+#
+# By default this routes everything to a "null" receiver (alerts are
+# visible in the Alertmanager UI at :9093 but not forwarded anywhere). To
+# actually get paged, fill in one of the receivers below and point the
+# route at it.
+
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: "null"            # default sink - see receivers below
+  group_by: ["alertname", "team"]
+  group_wait: 30s             # wait to batch related alerts before sending
+  group_interval: 5m          # how long before sending a new batch
+  repeat_interval: 4h         # how often to re-send an unresolved alert
+  routes:
+    # Send critical alerts on their own faster track. Repoint 'receiver'
+    # to "slack" (or "webhook") once you have wired it up below.
+    - matchers:
+        - severity = "critical"
+      receiver: "null"
+      group_wait: 10s
+      repeat_interval: 1h
+
+receivers:
+  # 1) Null receiver: visible in the UI, forwarded nowhere. Good for a
+  #    demo / first run so nothing pages you unexpectedly.
+  - name: "null"
+
+  # 2) Generic webhook: receives the full alert JSON. Point this at your
+  #    own service, a function, or a bridge. Uncomment to use.
+  # - name: "webhook"
+  #   webhook_configs:
+  #     - url: "http://host.docker.internal:5001/alerts"
+  #       send_resolved: true
+
+  # 3) Slack: create an Incoming Webhook in your Slack workspace
+  #    (https://api.slack.com/messaging/webhooks), put the URL below, and
+  #    repoint the route's 'receiver' to "slack".
+  # - name: "slack"
+  #   slack_configs:
+  #     - api_url: "https://hooks.slack.com/services/XXX/YYY/ZZZ"
+  #       channel: "#security-alerts"
+  #       send_resolved: true
+  #       title: "{{ .CommonAnnotations.summary }}"
+  #       text: >-
+  #         {{ range .Alerts }}*{{ .Labels.severity | toUpper }}* {{ .Annotations.description }}
+  #         {{ end }}
+
+# Suppress lower-severity alerts for a target when a critical one is
+# already firing for it (e.g. don't nag about a missing header when the
+# whole endpoint is down).
+inhibit_rules:
+  - source_matchers:
+      - severity = "critical"
+    target_matchers:
+      - severity =~ "warning|high"
+    equal: ["team"]

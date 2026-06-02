@@ -1,0 +1,15 @@
+# Auto-provision the Prometheus datasource so Grafana works out of the box.
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    # 'prometheus' resolves on the docker-compose network.
+    url: http://prometheus:9090
+    isDefault: true
+    uid: argus-prometheus
+    editable: true
+    jsonData:
+      httpMethod: POST
+      timeInterval: 2m

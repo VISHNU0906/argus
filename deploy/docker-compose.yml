@@ -1,0 +1,96 @@
+# Argus monitoring stack: exporter + Prometheus + Grafana + Alertmanager.
+#
+# FIRST: copy config.example.yaml -> config.yaml in the repo root, or the
+# argus service's bind mount below will create a *directory* named
+# config.yaml instead of mounting your file.
+#
+# Then bring it all up from the repo root with:
+#   docker compose -f deploy/docker-compose.yml up
+#
+# Then open:
+#   Grafana       http://localhost:3000   (admin / admin)
+#   Prometheus    http://localhost:9090
+#   Alertmanager  http://localhost:9093
+#   Argus raw     http://localhost:9882/metrics
+
+services:
+  # The Argus exporter itself. Built from the Dockerfile at the repo root.
+  argus:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: argus
+    # Mount your real config in over the baked-in example. Copy
+    # config.example.yaml -> config.yaml first (see header note).
+    volumes:
+      - ../config.yaml:/app/config.yaml:ro
+      - ../requirements.txt:/app/requirements.txt:ro
+      # The example config scans this demo fixture; mount it so the
+      # dependencies collector has something to read inside the container.
+      - ../examples:/app/examples:ro
+    command: ["python", "-m", "argus.exporter", "--config", "config.yaml"]
+    ports:
+      - "9882:9882"
+    networks:
+      - argus
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: argus-prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    networks:
+      - argus
+    depends_on:
+      - argus
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: argus-alertmanager
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+    ports:
+      - "9093:9093"
+    networks:
+      - argus
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: argus-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      # Auto-provision the Prometheus datasource and the Argus dashboard.
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - argus
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+networks:
+  argus:
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:
