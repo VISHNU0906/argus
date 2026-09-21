@@ -1,6 +1,6 @@
 # Argus
 
-**Argus is a Prometheus exporter that tells you whether your security infrastructure is healthy** — the same way `node_exporter` tells you whether a server is healthy.
+**Argus is a Prometheus exporter that tells you whether your security infrastructure is healthy** :  the same way `node_exporter` tells you whether a server is healthy.
 
 You give it a list of things to watch (HTTPS endpoints, hosts, a `requirements.txt` file). On every scrape it checks them and turns the results into Prometheus metrics: certificates about to expire, missing security headers, endpoints that went dark, ports that shouldn't be open, and dependencies with known vulnerabilities. It ships with Grafana dashboards and Alertmanager rules so you can *see* your posture and get paged when it slips.
 
@@ -25,7 +25,7 @@ That starts four containers, wired together:
 | **Alertmanager** | http://localhost:9093 | Routes firing alerts (Slack/webhook) |
 | **Argus exporter** | http://localhost:9882/metrics | Raw metrics, if you want to see them |
 
-The Prometheus datasource and the "Argus – Security Posture" dashboard are auto-provisioned, so Grafana works the moment it boots.
+The Prometheus datasource and the "Argus - Security Posture" dashboard are auto-provisioned, so Grafana works the moment it boots.
 
 ### Just want the exporter, no stack?
 
@@ -40,16 +40,16 @@ curl http://localhost:9882/metrics
 
 ## What each check means
 
-Argus runs four **collectors**. Each one is independent — if one fails, the others still produce metrics, and you get an `argus_collector_up{collector="..."} 0` series telling you which one broke.
+Argus runs four **collectors**. Each one is independent :  if one fails, the others still produce metrics, and you get an `argus_collector_up{collector="..."} 0` series telling you which one broke.
 
 ### 1. TLS certificate expiry (`tls_cert`)
-Opens a TLS connection to each `host:port`, reads the certificate the server presents, and reports how many days until it expires. Certificate **verification is intentionally disabled** here — Argus needs to inspect certs that are expired, self-signed, or hostname-mismatched, which is exactly the set a normal client refuses to talk to. We're inspecting the cert, not trusting it.
+Opens a TLS connection to each `host:port`, reads the certificate the server presents, and reports how many days until it expires. Certificate **verification is intentionally disabled** here :  Argus needs to inspect certs that are expired, self-signed, or hostname-mismatched, which is exactly the set a normal client refuses to talk to. We're inspecting the cert, not trusting it.
 
 ### 2. HTTP security headers (`http_headers`)
 Does a GET to each URL and checks whether five important security headers are present: HSTS, Content-Security-Policy, X-Frame-Options, X-Content-Type-Options, and Referrer-Policy. Also records whether the endpoint responded at all and how long it took.
 
 ### 3. Unexpected open ports (`ports`)
-For each host you give it an **allowlist** of ports you expect to be open. Argus probes a (small, configurable) set of ports and flags anything that's open but *not* on the list — classic config drift, like a debug service left exposed. This is drift detection, not a full nmap sweep (see [Limitations](#limitations)).
+For each host you give it an **allowlist** of ports you expect to be open. Argus probes a (small, configurable) set of ports and flags anything that's open but *not* on the list :  classic config drift, like a debug service left exposed. This is drift detection, not a full nmap sweep (see [Limitations](#limitations)).
 
 ### 4. Dependency vulnerabilities (`dependencies`)
 Reads a `requirements.txt`, parses the pinned packages, and asks the public [OSV.dev](https://osv.dev) database which ones have known vulnerabilities. Counts are bucketed by severity (CRITICAL / HIGH / MODERATE / LOW / UNKNOWN). If there's no network, it logs a warning, reports zero, and sets `argus_dependency_scan_success` to 0 instead of crashing.
@@ -146,8 +146,8 @@ collectors:
 ```
 
 > The shipped `config.example.yaml` points the dependency scanner at
-> `examples/vulnerable-requirements.txt` — a deliberately old, clearly
-> labelled demo fixture — so a first run actually shows HIGH/CRITICAL
+> `examples/vulnerable-requirements.txt` :  a deliberately old, clearly
+> labelled demo fixture :  so a first run actually shows HIGH/CRITICAL
 > findings from live OSV.dev data. Argus's own runtime dependencies
 > (`requirements.txt`) are kept current. Point the scanner at your own file
 > to check your real dependencies.
@@ -163,7 +163,7 @@ pip install pytest
 python -m pytest tests/ -v
 ```
 
-The two core collectors (`tls_cert`, `http_headers`) have full unit tests covering the expiry maths, validity windows, case-insensitive header matching, and failure handling — all with the network mocked, so the suite is fast and offline.
+The two core collectors (`tls_cert`, `http_headers`) have full unit tests covering the expiry maths, validity windows, case-insensitive header matching, and failure handling :  all with the network mocked, so the suite is fast and offline.
 
 ---
 
@@ -172,21 +172,21 @@ The two core collectors (`tls_cert`, `http_headers`) have full unit tests coveri
 Honest notes, because this is real software, not a demo:
 
 - **Synchronous scrape.** Every check runs in series when Prometheus scrapes, so a config with many targets makes a scrape slow. The default `scrape_interval` is 2 minutes and `scrape_timeout` is 110s to accommodate this. If you only run `tls_cert` + `http_headers`, you can safely drop those to ~30s.
-- **Port scan is deliberately small.** The `ports` collector is a polite TCP-connect probe over a configurable list of ports, not a full 1–65535 sweep, and it doesn't do UDP or service fingerprinting. It's built for *drift detection against a known-good allowlist*, not discovery. Use a dedicated scanner (nmap) for exhaustive work.
+- **Port scan is deliberately small.** The `ports` collector is a polite TCP-connect probe over a configurable list of ports, not a full 1-65535 sweep, and it doesn't do UDP or service fingerprinting. It's built for *drift detection against a known-good allowlist*, not discovery. Use a dedicated scanner (nmap) for exhaustive work.
 - **Dependency severity needs follow-up calls.** OSV's batch endpoint returns only vulnerability IDs, so Argus makes one extra request per unique vuln to fetch its severity. These follow-ups are capped per scrape (`dependencies.max_lookups`); past the cap, findings are counted as `UNKNOWN`. Only exact (`==`) pins are scanned.
 
 ---
 
 ## Roadmap
 
-These are signals worth adding next. **They are not built yet** — listed here so the direction is clear:
+These are signals worth adding next. **They are not built yet** :  listed here so the direction is clear:
 
-- **AWS IAM key age** — flag access keys older than N days (`argus_iam_key_age_days`).
-- **Public S3 buckets** — detect buckets with public-read/-write ACLs or policies.
-- **Cloud security-group drift** — the `ports` idea, but for AWS/GCP firewall rules.
-- **DNS / DNSSEC health** — missing CAA records, unsigned zones.
-- **Certificate transparency** — alert on unexpected certs issued for your domains.
-- **Pushgateway / batch mode** — for environments that can't scrape a long-running server.
+- **AWS IAM key age** :  flag access keys older than N days (`argus_iam_key_age_days`).
+- **Public S3 buckets** :  detect buckets with public-read/-write ACLs or policies.
+- **Cloud security-group drift** :  the `ports` idea, but for AWS/GCP firewall rules.
+- **DNS / DNSSEC health** :  missing CAA records, unsigned zones.
+- **Certificate transparency** :  alert on unexpected certs issued for your domains.
+- **Pushgateway / batch mode** :  for environments that can't scrape a long-running server.
 
 ---
 
